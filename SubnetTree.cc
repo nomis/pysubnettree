@@ -9,6 +9,8 @@
 
 static PyObject* dummy = Py_BuildValue("s", "<dummy string>");
 
+#define TREE(family) (family == AF_INET ? tree4 : tree6)
+
 inline static prefix_t* make_prefix(int family, inx_addr * addr, unsigned int width)
 {
     if ( ! (family == AF_INET || family == AF_INET6) )
@@ -85,15 +87,22 @@ inline static bool parse_cidr(const char *cidr, int *family, inx_addr *subnet, u
     return true;
 }
 
+static void free_data(void *data)
+{
+    Py_DECREF(data);
+}
+
 SubnetTree::SubnetTree(bool arg_binary_lookup_mode)
 {
-    tree = New_Patricia(128);
+    tree4 = New_Patricia(32);
+    tree6 = New_Patricia(128);
     binary_lookup_mode = arg_binary_lookup_mode;
 }
 
 SubnetTree::~SubnetTree()
 {
-    Destroy_Patricia(tree, 0);
+    Destroy_Patricia(tree4, (void (*)())free_data);
+    Destroy_Patricia(tree6, (void (*)())free_data);
 }
 
 PyObject* SubnetTree::insert(const char *cidr, PyObject* data)
@@ -121,7 +130,7 @@ PyObject* SubnetTree::insert(unsigned long subnet, unsigned short mask, PyObject
 PyObject* SubnetTree::insert(int family, inx_addr subnet, unsigned short mask, PyObject * data)
 {
     prefix_t* sn = make_prefix(family, &subnet, mask);
-    patricia_node_t* node = patricia_lookup(tree, sn);
+    patricia_node_t* node = patricia_lookup(TREE(family), sn);
     Deref_Prefix(sn);
 
     if ( ! node ) {
@@ -163,7 +172,7 @@ PyObject* SubnetTree::remove(unsigned long addr, unsigned short mask)
 PyObject* SubnetTree::remove(int family, inx_addr addr, unsigned short mask)
 {
     prefix_t* subnet = make_prefix(family, &addr, mask);
-    patricia_node_t* node = patricia_search_exact(tree, subnet);
+    patricia_node_t* node = patricia_search_exact(TREE(family), subnet);
     Deref_Prefix(subnet);
 
     if ( ! node ) {
@@ -174,7 +183,7 @@ PyObject* SubnetTree::remove(int family, inx_addr addr, unsigned short mask)
     PyObject* data = (PyObject*)node->data;
     Py_DECREF(data);
 
-    patricia_remove(tree, node);
+    patricia_remove(TREE(family), node);
 
     if ( data != dummy )
         Py_RETURN_TRUE;
@@ -225,7 +234,7 @@ PyObject* SubnetTree::lookup(int family, inx_addr addr) const
 {
     int mask = family == AF_INET ? 32 : 128;
     prefix_t* subnet = make_prefix(family, &addr, mask);
-    patricia_node_t* node = patricia_search_best(tree, subnet);
+    patricia_node_t* node = patricia_search_best(TREE(family), subnet);
     Deref_Prefix(subnet);
 
     if ( ! node )

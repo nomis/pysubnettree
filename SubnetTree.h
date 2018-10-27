@@ -128,6 +128,7 @@ private:
    PyObject* remove(int family, inx_addr subnet, unsigned short mask);
    PyObject* lookup(int family, inx_addr subnet) const;
 
-   patricia_tree_t* tree;
+   patricia_tree_t* tree4;
+   patricia_tree_t* tree6;
    bool binary_lookup_mode;
 };
